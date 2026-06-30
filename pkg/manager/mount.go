@@ -45,11 +45,17 @@ func (m *Manager) RefreshMount() error {
 		dirs = []string{"__all__"}
 	}
 
-	// Call event handler if set
-	if m.mountManager != nil {
-		return m.mountManager.Refresh(dirs)
+	if m.mountManager == nil {
+		return nil
 	}
-	return nil
+
+	// Coalesce concurrent refresh requests so a burst of events (e.g. bulk
+	// repair or simultaneous downloads) results in at most one in-flight
+	// vfs/forget call at a time rather than hammering rclone's RC server.
+	_, err, _ := m.refreshSG.Do("mount_refresh", func() (interface{}, error) {
+		return nil, m.mountManager.Refresh(dirs)
+	})
+	return err
 }
 
 // RunFFprobe runs ffprobe on the given file paths to warm up caches and trigger imports.
