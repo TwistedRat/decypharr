@@ -198,11 +198,19 @@ func (p *NZBParser) Process(ctx context.Context, nzb *storage.NZB, groups map[st
 	// Calculate total Size
 	for _, file := range files {
 		if hasOneFile {
-			// Only append extension if NZB name doesn't already have the same extension
+			// Rename to the NZB base name, preserving the file's media extension.
+			// Use utils.IsMediaFile to validate extensions because filepath.Ext on
+			// bracket-heavy release names (e.g. [EAC3.5.1][x264]-Group) returns
+			// spurious non-media extensions like ".1][x264]-Group".
 			fileExt := filepath.Ext(file.Name)
-			nzbExt := filepath.Ext(nzb.Name)
-			if fileExt != "" && !strings.EqualFold(nzbExt, fileExt) {
-				file.Name = nzb.Name + fileExt
+			if fileExt != "" && utils.IsMediaFile("f"+fileExt) {
+				// File has a valid media extension - append it to the NZB base name
+				// (strip any spurious extension from nzb.Name first via RemoveExtension).
+				file.Name = utils.RemoveExtension(nzb.Name) + fileExt
+			} else if file.FileType == storage.NZBFileTypeRar {
+				// File came from a RAR archive but has no valid media extension
+				// (some groups store MKV inside RAR without a .mkv extension).
+				file.Name = utils.RemoveExtension(nzb.Name) + ".mkv"
 			} else {
 				file.Name = nzb.Name
 			}
