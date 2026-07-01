@@ -91,7 +91,7 @@ func (s *SABnzbd) handleDelete(w http.ResponseWriter, r *http.Request) {
 			s.logger.Error().
 				Err(err).
 				Msg("Failed to delete all failed NZBs")
-			s.writeError(w, fmt.Sprintf("Failed to delete failed NZBs: %v", err), http.StatusInternalServerError)
+			s.writeError(w, fmt.Sprintf("Failed to delete failed NZBs: %v", err), http.StatusOK)
 			return
 		}
 		response := StatusResponse{
@@ -119,7 +119,7 @@ func (s *SABnzbd) handleDelete(w http.ResponseWriter, r *http.Request) {
 	if len(errors) > 0 {
 		if successCount == 0 {
 			// All deletions failed
-			s.writeError(w, fmt.Sprintf("All deletions failed: %s", strings.Join(errors, "; ")), http.StatusInternalServerError)
+			s.writeError(w, fmt.Sprintf("All deletions failed: %s", strings.Join(errors, "; ")), http.StatusOK)
 			return
 		}
 
@@ -326,7 +326,7 @@ func (s *SABnzbd) handleAddURL(w http.ResponseWriter, r *http.Request) {
 		if len(errors) > 0 {
 			errMsg = strings.Join(errors, "; ")
 		}
-		s.writeError(w, errMsg, http.StatusInternalServerError)
+		s.writeError(w, errMsg, http.StatusOK)
 		return
 	}
 
@@ -422,14 +422,14 @@ func (s *SABnzbd) handleAddFile(w http.ResponseWriter, r *http.Request) {
 		// Read file content
 		content, err := io.ReadAll(file)
 		if err != nil {
-			s.writeError(w, "Failed to read file", http.StatusInternalServerError)
+			s.writeError(w, "Failed to read file", http.StatusOK)
 			return
 		}
 
 		// Parse NZB file
 		nzbID, err := s.addNZBFile(ctx, content, header.Filename, _arr, action)
 		if err != nil {
-			s.writeError(w, fmt.Sprintf("Failed to add NZB file: %s", err.Error()), http.StatusInternalServerError)
+			s.writeError(w, fmt.Sprintf("Failed to add NZB file: %s", err.Error()), http.StatusOK)
 			return
 		}
 		if nzbID != "" {
@@ -442,7 +442,7 @@ func (s *SABnzbd) handleAddFile(w http.ResponseWriter, r *http.Request) {
 		if len(errors) > 0 {
 			errMsg = strings.Join(errors, "; ")
 		}
-		s.writeError(w, errMsg, http.StatusInternalServerError)
+		s.writeError(w, errMsg, http.StatusOK)
 		return
 	}
 
