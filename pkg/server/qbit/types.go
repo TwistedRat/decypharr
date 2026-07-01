@@ -413,7 +413,12 @@ func convertToQBitTorrentTorrent(t *storage.Entry) Torrent {
 		SavePath:     t.SavePath,
 		ContentPath:  t.ContentPath,
 		AddedOn:      t.CreatedAt.Unix(),
-		CompletionOn: 0,
+		CompletionOn: func() int64 {
+			if t.CompletedAt != nil {
+				return t.CompletedAt.Unix()
+			}
+			return 0
+		}(),
 		Debrid:       t.ActiveProvider,
 		DebridID:     "",
 		AmountLeft:   int64(float64(t.Size) * (1 - t.Progress)),
