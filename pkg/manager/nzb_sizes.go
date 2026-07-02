@@ -84,7 +84,11 @@ func normalizeNZBFileSizes(nzb *storage.NZB) (bool, int64) {
 	for i := range nzb.Files {
 		file := &nzb.Files[i]
 		streamSize := streamSizeFromSegments(file.Segments)
-		if streamSize > 0 && (file.Size <= 0 || file.Size > streamSize) {
+		if streamSize > 0 && file.Size <= 0 {
+			// Only fill in missing sizes — never reduce a size that was already
+			// computed by the parser. streamSizeFromSegments uses max(EndOffset)
+			// which is unreliable for sliced RAR segments where offsets are
+			// relative to the volume, not the output file.
 			file.Size = streamSize
 			changed = true
 		}

@@ -673,12 +673,13 @@ func (u *Usenet) Stream(ctx context.Context, nzoID, filename string, start, end 
 	rangeEnd := end
 
 	// Validate range against volume size
+	if rangeStart >= ufsEntry.volumes[0].Size {
+		// Range starts beyond the volume — storage size is stale/wrong.
+		// Return silent EOF so the client stops retrying instead of spamming logs.
+		return customerror.NewSilentError(fmt.Errorf("range start %d beyond volume size %d", rangeStart, ufsEntry.volumes[0].Size))
+	}
 	if rangeEnd >= ufsEntry.volumes[0].Size {
 		rangeEnd = ufsEntry.volumes[0].Size - 1
-	}
-
-	if rangeEnd < rangeStart {
-		return fmt.Errorf("invalid resolved byte range %d-%d", rangeStart, rangeEnd)
 	}
 
 	// get shared reader from entry (created once, reused by all streams)
