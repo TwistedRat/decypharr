@@ -32,8 +32,8 @@ import (
 
 var planSlots = map[string]int{
 	"essential": 3,
-	"standard":  5,
 	"pro":       10,
+	"unlimited": 10,
 }
 
 type Torbox struct {
@@ -724,9 +724,9 @@ func (tb *Torbox) GetProfile() (*types.Profile, error) {
 	case 1:
 		profile.Type = "essential"
 	case 2:
-		profile.Type = "standard"
-	case 3:
 		profile.Type = "pro"
+	case 3:
+		profile.Type = "unlimited"
 	default:
 		profile.Type = "free"
 	}
