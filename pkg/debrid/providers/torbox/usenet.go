@@ -47,7 +47,6 @@ func (tb *Torbox) SubmitNZB(ctx context.Context, nzbContent []byte, name string)
 		return "", err
 	}
 	req.Header.Set("Content-Type", w.FormDataContentType())
-	req.Header.Set("Authorization", "Bearer "+tb.APIKey)
 
 	resp, err := tb.nzbUploadClient.Do(req)
 	if err != nil {
