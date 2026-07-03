@@ -72,7 +72,11 @@ func (tb *Torbox) SubmitNZB(ctx context.Context, nzbContent []byte, name string)
 
 // GetUsenetDownload fetches the current state of a TorBox usenet download by ID.
 func (tb *Torbox) GetUsenetDownload(ctx context.Context, id string) (*usenetInfo, error) {
-	var res usenetInfoResponse
+	intID, err := strconv.Atoi(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid usenet id %q: %w", id, err)
+	}
+	var res usenetListResponse
 	resp, err := tb.doGet("/api/usenet/mylist", map[string]string{"id": id}, &res)
 	if err != nil {
 		return nil, err
@@ -83,7 +87,12 @@ func (tb *Torbox) GetUsenetDownload(ctx context.Context, id string) (*usenetInfo
 	if !res.Success || res.Data == nil {
 		return nil, fmt.Errorf("torbox usenet download %s not found: %s", id, res.Detail)
 	}
-	return res.Data, nil
+	for i := range *res.Data {
+		if (*res.Data)[i].Id == intID {
+			return &(*res.Data)[i], nil
+		}
+	}
+	return nil, fmt.Errorf("torbox usenet download %s not found in response", id)
 }
 
 // WaitForUsenetCached polls until the usenet download is cached/finished or timeout elapses.
