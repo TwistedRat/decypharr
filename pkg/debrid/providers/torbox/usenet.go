@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"strconv"
@@ -54,16 +55,21 @@ func (tb *Torbox) SubmitNZB(ctx context.Context, nzbContent []byte, name string)
 	}
 	defer resp.Body.Close()
 
-	var result addNZBResponse
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		if err := json.ConfigDefault.NewDecoder(resp.Body).Decode(&result); err != nil {
-			return "", fmt.Errorf("failed to decode usenet submit response: %w", err)
-		}
-	}
-
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", fmt.Errorf("torbox usenet submit: HTTP %d", resp.StatusCode)
 	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read usenet submit response: %w", err)
+	}
+	tb.logger.Debug().Str("body", string(body)).Msg("TorBox usenet create response")
+
+	var result addNZBResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("failed to decode usenet submit response: %w", err)
+	}
+
 	if !result.Success || result.Data == nil {
 		return "", fmt.Errorf("torbox usenet submit failed: %s", result.Detail)
 	}
