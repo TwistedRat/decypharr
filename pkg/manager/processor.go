@@ -112,7 +112,13 @@ func (m *Manager) processQueuedEntries() {
 				m.processingEntries.Delete(entry.InfoHash)
 			}
 		} else if entry.IsNZB() {
-			go m.processQueuedNZB(entry)
+			if entry.ActiveProvider == "" {
+				// Standard NNTP NZB — process via usenet client.
+				go m.processQueuedNZB(entry)
+			} else {
+				// TorBox usenet NZB — managed by background goroutine, skip.
+				m.processingEntries.Delete(entry.InfoHash)
+			}
 		} else {
 			m.processingEntries.Delete(entry.InfoHash)
 		}
