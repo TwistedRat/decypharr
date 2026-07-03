@@ -262,20 +262,12 @@ func (m *Manager) tryTorboxUsenet(ctx context.Context, req *ImportRequest) (stri
 	return m.addNZBViaTorbox(ctx, req, nc, debridName)
 }
 
-// addNZBViaTorbox submits the NZB to TorBox's usenet API, returns the entry ID
-// immediately, then polls for cache completion in the background. This keeps the
-// SABnzbd HTTP response fast so Sonarr/Radarr don't time out waiting.
+// addNZBViaTorbox queues the entry immediately and returns the ID to the caller
+// (so Sonarr/Radarr get a fast ACK), then submits to TorBox and polls for cache
+// completion entirely in the background.
 func (m *Manager) addNZBViaTorbox(ctx context.Context, req *ImportRequest, nc debridCommon.NZBClient, debridName string) (string, error) {
-	m.logger.Info().Str("name", req.Name).Str("debrid", debridName).Msg("Submitting NZB to TorBox usenet API")
-
-	usenetID, err := nc.SubmitNZB(ctx, req.NZBContent, req.Name)
-	if err != nil {
-		m.logger.Warn().Err(err).Str("name", req.Name).Msg("TorBox usenet submit failed, falling back to NNTP")
-		return "", nil // recoverable — fall through
-	}
-
-	// Create the entry immediately in a downloading state and return — don't block
-	// on TorBox cache polling. Sonarr/Radarr get a fast ACK; we finish async.
+	// Create and register the entry before doing any network I/O so the
+	// SABnzbd HTTP response returns immediately — TorBox submit can take 30-120s.
 	entryID := uuid.New().String()
 	now := time.Now()
 	entry := &storage.Entry{
@@ -305,15 +297,30 @@ func (m *Manager) addNZBViaTorbox(ctx context.Context, req *ImportRequest, nc de
 		return "", fmt.Errorf("failed to add TorBox usenet entry to queue: %w", err)
 	}
 
-	m.logger.Info().Str("name", req.Name).Str("usenet_id", usenetID).Msg("NZB submitted to TorBox usenet, polling in background")
+	m.logger.Info().Str("name", req.Name).Str("debrid", debridName).Msg("NZB queued for TorBox usenet, submitting in background")
+
+	nzbContent := req.NZBContent // capture before req may be reused
+	nzbName := req.Name
 
 	go func() {
 		bgCtx, cancel := context.WithTimeout(context.Background(), m.usenetTimeout)
 		defer cancel()
 
+		usenetID, err := nc.SubmitNZB(bgCtx, nzbContent, nzbName)
+		if err != nil {
+			m.logger.Warn().Err(err).Str("name", nzbName).Msg("TorBox usenet submit failed — marking entry errored")
+			entry.State = storage.EntryStateError
+			entry.Status = debridTypes.TorrentStatusError
+			entry.UpdatedAt = time.Now()
+			_ = m.queue.Update(entry)
+			return
+		}
+
+		m.logger.Info().Str("name", nzbName).Str("usenet_id", usenetID).Msg("NZB submitted to TorBox usenet, waiting for cache")
+
 		dl, err := nc.WaitForUsenetCached(bgCtx, usenetID, m.usenetTimeout)
 		if err != nil {
-			m.logger.Warn().Err(err).Str("name", req.Name).Str("usenet_id", usenetID).
+			m.logger.Warn().Err(err).Str("name", nzbName).Str("usenet_id", usenetID).
 				Msg("TorBox usenet cache wait failed — marking entry errored")
 			_ = nc.DeleteUsenetDownload(bgCtx, usenetID)
 			entry.State = storage.EntryStateError
@@ -356,8 +363,8 @@ func (m *Manager) addNZBViaTorbox(ctx context.Context, req *ImportRequest, nc de
 		}
 
 		if len(entry.Files) == 0 {
-			m.logger.Warn().Str("name", req.Name).Str("usenet_id", usenetID).
-				Msg("TorBox usenet: no eligible files after allowed_file_types filter — marking entry errored")
+			m.logger.Warn().Str("name", nzbName).Str("usenet_id", usenetID).
+				Msg("TorBox usenet: no eligible files after filter — marking entry errored")
 			_ = nc.DeleteUsenetDownload(bgCtx, usenetID)
 			entry.State = storage.EntryStateError
 			entry.Status = debridTypes.TorrentStatusError
