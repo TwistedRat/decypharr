@@ -94,8 +94,9 @@ func (tb *Torbox) GetUsenetDownload(ctx context.Context, id string) (*usenetInfo
 }
 
 // WaitForUsenetCached polls until the usenet download is cached/finished or timeout elapses.
+// onProgress is called on each poll with the current progress (0.0–1.0); may be nil.
 // Returns the download info (with file list) on success, an error on failure or timeout.
-func (tb *Torbox) WaitForUsenetCached(ctx context.Context, id string, timeout time.Duration) (*debridCommon.UsenetDownload, error) {
+func (tb *Torbox) WaitForUsenetCached(ctx context.Context, id string, timeout time.Duration, onProgress func(float64)) (*debridCommon.UsenetDownload, error) {
 	deadline := time.Now().Add(timeout)
 	const pollInterval = 5 * time.Second
 
@@ -103,6 +104,10 @@ func (tb *Torbox) WaitForUsenetCached(ctx context.Context, id string, timeout ti
 		info, err := tb.GetUsenetDownload(ctx, id)
 		if err != nil {
 			return nil, err
+		}
+
+		if onProgress != nil {
+			onProgress(info.Progress)
 		}
 
 		// TorBox sets download_finished=true before it finishes extracting/processing

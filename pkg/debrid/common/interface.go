@@ -57,7 +57,8 @@ type NZBClient interface {
 	// SubmitNZB uploads NZB content and returns the provider's usenet download ID.
 	SubmitNZB(ctx context.Context, nzbContent []byte, name string) (string, error)
 	// WaitForUsenetCached polls until the download is cached/finished or timeout elapses.
-	WaitForUsenetCached(ctx context.Context, id string, timeout time.Duration) (*UsenetDownload, error)
+	// onProgress is called on each poll with current progress (0.0–1.0); may be nil.
+	WaitForUsenetCached(ctx context.Context, id string, timeout time.Duration, onProgress func(float64)) (*UsenetDownload, error)
 	// DeleteUsenetDownload removes a usenet download from the provider.
 	DeleteUsenetDownload(ctx context.Context, id string) error
 }

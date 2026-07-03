@@ -318,7 +318,11 @@ func (m *Manager) addNZBViaTorbox(ctx context.Context, req *ImportRequest, nc de
 
 		m.logger.Info().Str("name", nzbName).Str("usenet_id", usenetID).Msg("NZB submitted to TorBox usenet, waiting for cache")
 
-		dl, err := nc.WaitForUsenetCached(bgCtx, usenetID, m.usenetTimeout)
+		dl, err := nc.WaitForUsenetCached(bgCtx, usenetID, m.usenetTimeout, func(progress float64) {
+			entry.Progress = progress
+			entry.UpdatedAt = time.Now()
+			_ = m.queue.Update(entry)
+		})
 		if err != nil {
 			m.logger.Warn().Err(err).Str("name", nzbName).Str("usenet_id", usenetID).
 				Msg("TorBox usenet cache wait failed — marking entry errored")
