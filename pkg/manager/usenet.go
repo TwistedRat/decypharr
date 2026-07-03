@@ -299,10 +299,15 @@ func (m *Manager) addNZBViaTorbox(ctx context.Context, req *ImportRequest, nc de
 
 	m.logger.Info().Str("name", req.Name).Str("debrid", debridName).Msg("NZB queued for TorBox usenet, submitting in background")
 
+	// Hold processingEntries for the full goroutine lifetime so processQueuedEntries
+	// doesn't race with us while SubmitNZB is in-flight (before the ID is stored).
+	m.processingEntries.Store(entry.InfoHash, struct{}{})
+
 	nzbContent := req.NZBContent // capture before req may be reused
 	nzbName := req.Name
 
 	go func() {
+		defer m.processingEntries.Delete(entry.InfoHash)
 		bgCtx, cancel := context.WithTimeout(context.Background(), m.usenetTimeout)
 		defer cancel()
 
