@@ -105,7 +105,12 @@ func (tb *Torbox) WaitForUsenetCached(ctx context.Context, id string, timeout ti
 			return nil, err
 		}
 
-		if info.DownloadFinished || info.Cached {
+		// TorBox sets download_finished=true before it finishes extracting/processing
+		// files. Wait until files are populated and state leaves "processing".
+		ready := (info.DownloadFinished || info.Cached) &&
+			len(info.Files) > 0 &&
+			info.DownloadState != "processing"
+		if ready {
 			tb.logger.Info().
 				Str("usenet_id", id).
 				Str("name", info.Name).
