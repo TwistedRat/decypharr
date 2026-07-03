@@ -110,7 +110,11 @@ func (tb *Torbox) WaitForUsenetCached(ctx context.Context, id string, timeout ti
 				Str("usenet_id", id).
 				Str("name", info.Name).
 				Float64("progress", info.Progress*100).
+				Int("file_count", len(info.Files)).
 				Msg("TorBox usenet download ready")
+			for _, f := range info.Files {
+				tb.logger.Debug().Str("file", f.Name).Int64("size", f.Size).Msg("TorBox usenet file")
+			}
 			return toUsenetDownload(info), nil
 		}
 
