@@ -131,6 +131,10 @@ func (tb *Torbox) WaitForUsenetCached(ctx context.Context, id string, timeout ti
 		switch info.DownloadState {
 		case "error", "failed", "virus", "timeout":
 			return nil, fmt.Errorf("torbox usenet download %s failed with state %q", id, info.DownloadState)
+		case "paused":
+			// Resume paused downloads automatically.
+			tb.logger.Debug().Str("usenet_id", id).Msg("TorBox usenet download paused — resuming")
+			_ = tb.resumeUsenetDownload(ctx, id)
 		}
 
 		if time.Now().After(deadline) {
@@ -150,6 +154,19 @@ func (tb *Torbox) WaitForUsenetCached(ctx context.Context, id string, timeout ti
 		case <-time.After(pollInterval):
 		}
 	}
+}
+
+// resumeUsenetDownload sends a Resume action to TorBox for a paused usenet download.
+func (tb *Torbox) resumeUsenetDownload(ctx context.Context, id string) error {
+	payload := map[string]string{"usenet_id": id, "action": "Resume"}
+	resp, err := tb.doDelete(fmt.Sprintf("/api/usenet/controlusenet/%s", id), payload)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("torbox controlusenet resume: HTTP %d", resp.StatusCode)
+	}
+	return nil
 }
 
 // DeleteUsenetDownload removes a usenet download from TorBox.
