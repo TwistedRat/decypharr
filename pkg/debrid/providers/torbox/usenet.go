@@ -62,8 +62,6 @@ func (tb *Torbox) SubmitNZB(ctx context.Context, nzbContent []byte, name string)
 	if err != nil {
 		return "", fmt.Errorf("failed to read usenet submit response: %w", err)
 	}
-	tb.logger.Debug().Str("body", string(body)).Msg("TorBox usenet create response")
-
 	var result addNZBResponse
 	if err := json.Unmarshal(body, &result); err != nil {
 		return "", fmt.Errorf("failed to decode usenet submit response: %w", err)

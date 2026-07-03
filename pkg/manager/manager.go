@@ -85,6 +85,10 @@ type Manager struct {
 	nzbQueue      *nzbJobQueue
 	nzbWorkerStop chan struct{} // Signal to stop workers
 
+	// Serializes TorBox usenet active-count check + submit so concurrent NZB
+	// submissions don't all see active=0 before any submission is registered.
+	torboxUsenetMu sync.Mutex
+
 	// Notifications service
 	Notifications *notifications.Service
 }
