@@ -116,8 +116,17 @@ func (m *Manager) processQueuedEntries() {
 				// Standard NNTP NZB — process via usenet client.
 				go m.processQueuedNZB(entry)
 			} else {
-				// TorBox usenet NZB — managed by background goroutine, skip.
-				m.processingEntries.Delete(entry.InfoHash)
+				// TorBox usenet NZB — resume polling if we have a stored usenet ID.
+				placement := entry.GetActiveProvider()
+				if placement != nil && placement.ID != "" {
+					go m.resumeTorboxUsenetPolling(entry, placement.ID)
+				} else {
+					// No ID stored yet (submit was interrupted before it returned).
+					m.logger.Warn().Str("name", entry.Name).Msg("TorBox usenet entry has no stored ID after restart — marking errored")
+					entry.MarkAsError(fmt.Errorf("TorBox usenet submit was interrupted"))
+					_ = m.queue.Update(entry)
+					m.processingEntries.Delete(entry.InfoHash)
+				}
 			}
 		} else {
 			m.processingEntries.Delete(entry.InfoHash)

@@ -316,6 +316,18 @@ func (m *Manager) addNZBViaTorbox(ctx context.Context, req *ImportRequest, nc de
 			return
 		}
 
+		// Persist the usenet ID immediately so polling can resume after a restart.
+		entry.Providers[debridName] = &storage.ProviderEntry{
+			Provider: debridName,
+			ID:       usenetID,
+			AddedAt:  now,
+			Status:   debridTypes.TorrentStatusDownloading,
+			Progress: 0,
+			Files:    make(map[string]*storage.ProviderFile),
+		}
+		entry.UpdatedAt = time.Now()
+		_ = m.queue.Update(entry)
+
 		m.logger.Info().Str("name", nzbName).Str("usenet_id", usenetID).Msg("NZB submitted to TorBox usenet, waiting for cache")
 
 		dl, err := nc.WaitForUsenetCached(bgCtx, usenetID, m.usenetTimeout, func(progress float64) {
@@ -334,68 +346,119 @@ func (m *Manager) addNZBViaTorbox(ctx context.Context, req *ImportRequest, nc de
 			return
 		}
 
-		providerEntry := &storage.ProviderEntry{
-			Provider:     debridName,
-			ID:           usenetID,
-			AddedAt:      now,
-			DownloadedAt: func() *time.Time { t := time.Now(); return &t }(),
-			Status:       debridTypes.TorrentStatusDownloaded,
-			Progress:     1.0,
-			Files:        make(map[string]*storage.ProviderFile),
-		}
-
-		for _, f := range dl.Files {
-			fileName := filepath.Base(f.Name)
-			m.logger.Debug().Str("file", fileName).Int64("size", f.Size).Msg("TorBox usenet: file in download")
-			// No extension filter for TorBox usenet — TorBox may return .rar parts
-			// or other container formats; extension filtering is handled server-side.
-			link := torbox.BuildUsenetLink(usenetID, f.ID)
-			providerEntry.Files[fileName] = &storage.ProviderFile{
-				Id:   f.ID,
-				Link: link,
-				Path: f.Path,
-			}
-			entry.Files[fileName] = &storage.File{
-				Name:     fileName,
-				Size:     f.Size,
-				InfoHash: entryID,
-				AddedOn:  now,
-				Path:     f.Path,
-			}
-		}
-
-		if len(entry.Files) == 0 {
-			m.logger.Warn().Str("name", nzbName).Str("usenet_id", usenetID).
-				Msg("TorBox usenet: no eligible files after filter — marking entry errored")
-			_ = nc.DeleteUsenetDownload(bgCtx, usenetID)
-			entry.State = storage.EntryStateError
-			entry.Status = debridTypes.TorrentStatusError
-			entry.UpdatedAt = time.Now()
-			_ = m.queue.Update(entry)
-			return
-		}
-
-		entry.Providers[debridName] = providerEntry
-		entry.Name = dl.Name
-		entry.OriginalFilename = dl.Name
-		entry.Size = dl.Size
-		entry.Bytes = dl.Size
-		entry.Status = debridTypes.TorrentStatusDownloaded
-		entry.State = storage.EntryStatePausedUP
-		entry.Progress = 1.0
-		entry.UpdatedAt = time.Now()
-		_ = m.queue.Update(entry)
-
-		m.logger.Info().
-			Str("name", dl.Name).
-			Str("usenet_id", usenetID).
-			Int("files", len(entry.Files)).
-			Msg("TorBox usenet entry ready, processing action")
-
-		go m.processAction(entry)
+		m.finalizeTorboxUsenetEntry(entry, dl, usenetID, debridName)
 	}()
 
 	return entryID, nil
+}
+
+// resumeTorboxUsenetPolling re-attaches a WaitForUsenetCached goroutine to an entry
+// that was left in-progress when decypharr restarted. Called from processQueuedEntries.
+func (m *Manager) resumeTorboxUsenetPolling(entry *storage.Entry, usenetID string) {
+	defer m.processingEntries.Delete(entry.InfoHash)
+
+	client := m.ProviderClient(entry.ActiveProvider)
+	if client == nil {
+		m.logger.Error().Str("debrid", entry.ActiveProvider).Msg("TorBox usenet resume: provider client not found")
+		entry.MarkAsError(fmt.Errorf("debrid client not found: %s", entry.ActiveProvider))
+		_ = m.queue.Update(entry)
+		return
+	}
+	nc, ok := client.(debridCommon.NZBClient)
+	if !ok {
+		m.logger.Error().Str("debrid", entry.ActiveProvider).Msg("TorBox usenet resume: client does not implement NZBClient")
+		entry.MarkAsError(fmt.Errorf("client %s does not support NZB", entry.ActiveProvider))
+		_ = m.queue.Update(entry)
+		return
+	}
+
+	m.logger.Info().Str("name", entry.Name).Str("usenet_id", usenetID).Msg("Resuming TorBox usenet poll after restart")
+
+	bgCtx, cancel := context.WithTimeout(context.Background(), m.usenetTimeout)
+	defer cancel()
+
+	dl, err := nc.WaitForUsenetCached(bgCtx, usenetID, m.usenetTimeout, func(progress float64) {
+		entry.Progress = progress
+		entry.UpdatedAt = time.Now()
+		_ = m.queue.Update(entry)
+	})
+	if err != nil {
+		m.logger.Warn().Err(err).Str("name", entry.Name).Str("usenet_id", usenetID).
+			Msg("TorBox usenet cache wait failed after restart — marking entry errored")
+		_ = nc.DeleteUsenetDownload(bgCtx, usenetID)
+		entry.State = storage.EntryStateError
+		entry.Status = debridTypes.TorrentStatusError
+		entry.UpdatedAt = time.Now()
+		_ = m.queue.Update(entry)
+		return
+	}
+
+	m.finalizeTorboxUsenetEntry(entry, dl, usenetID, entry.ActiveProvider)
+}
+
+// finalizeTorboxUsenetEntry populates files and triggers processAction after a successful
+// WaitForUsenetCached — shared by addNZBViaTorbox's goroutine and resumeTorboxUsenetPolling.
+func (m *Manager) finalizeTorboxUsenetEntry(entry *storage.Entry, dl *debridCommon.UsenetDownload, usenetID, debridName string) {
+	now := time.Now()
+	providerEntry := entry.Providers[debridName]
+	if providerEntry == nil {
+		providerEntry = &storage.ProviderEntry{
+			Provider: debridName,
+			ID:       usenetID,
+			AddedAt:  entry.AddedOn,
+			Files:    make(map[string]*storage.ProviderFile),
+		}
+		entry.Providers[debridName] = providerEntry
+	}
+	providerEntry.DownloadedAt = &now
+	providerEntry.Status = debridTypes.TorrentStatusDownloaded
+	providerEntry.Progress = 1.0
+
+	for _, f := range dl.Files {
+		fileName := filepath.Base(f.Name)
+		m.logger.Debug().Str("file", fileName).Int64("size", f.Size).Msg("TorBox usenet: file in download")
+		link := torbox.BuildUsenetLink(usenetID, f.ID)
+		providerEntry.Files[fileName] = &storage.ProviderFile{
+			Id:   f.ID,
+			Link: link,
+			Path: f.Path,
+		}
+		entry.Files[fileName] = &storage.File{
+			Name:     fileName,
+			Size:     f.Size,
+			InfoHash: entry.InfoHash,
+			AddedOn:  entry.AddedOn,
+			Path:     f.Path,
+		}
+	}
+
+	if len(entry.Files) == 0 {
+		m.logger.Warn().Str("name", entry.Name).Str("usenet_id", usenetID).
+			Msg("TorBox usenet: no files after completion — marking entry errored")
+		entry.State = storage.EntryStateError
+		entry.Status = debridTypes.TorrentStatusError
+		entry.UpdatedAt = time.Now()
+		_ = m.queue.Update(entry)
+		return
+	}
+
+	entry.Name = dl.Name
+	entry.OriginalFilename = dl.Name
+	entry.Size = dl.Size
+	entry.Bytes = dl.Size
+	entry.Status = debridTypes.TorrentStatusDownloaded
+	entry.State = storage.EntryStatePausedUP
+	entry.Progress = 1.0
+	entry.UpdatedAt = now
+	_ = m.queue.Update(entry)
+
+	m.logger.Info().
+		Str("name", dl.Name).
+		Str("usenet_id", usenetID).
+		Int("files", len(entry.Files)).
+		Msg("TorBox usenet entry ready, processing action")
+
+	go m.processAction(entry)
 }
 
 func (m *Manager) syncNZBs(ctx context.Context) error {
