@@ -459,10 +459,14 @@ func verifySymlinkFileReady(path string, primeCache bool) error {
 		// Prime the rclone VFS lazy-fetch for CDN-backed (TorBox) entries.
 		// Without this, rclone fetches nothing until Sonarr's MediaInfo reads
 		// the file, racing the CDN and causing "unable to determine if file is
-		// a sample" import failures.
-		_, err = f.Read(buf)
+		// a sample" import failures. Require n>0: rclone can return (0, nil)
+		// when the CDN fetch hasn't started yet, which must not pass as "ready".
+		n, err := f.Read(buf)
 		if err != nil && err.Error() != "EOF" {
 			return fmt.Errorf("symlink target not readable (start): %w", err)
+		}
+		if n == 0 {
+			return fmt.Errorf("symlink target returned 0 bytes (CDN fetch not started)")
 		}
 	} else {
 		// For NNTP entries, probe start and end to catch incomplete retention
