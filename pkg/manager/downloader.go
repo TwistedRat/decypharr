@@ -462,7 +462,7 @@ func verifySymlinkFileReady(path string, primeCache bool) error {
 		// a sample" import failures. Require n>0: rclone can return (0, nil)
 		// when the CDN fetch hasn't started yet, which must not pass as "ready".
 		n, err := f.Read(buf)
-		if err != nil && err.Error() != "EOF" {
+		if err != nil && !errors.Is(err, io.EOF) {
 			return fmt.Errorf("symlink target not readable (start): %w", err)
 		}
 		if n == 0 {
@@ -483,7 +483,7 @@ func verifySymlinkFileReady(path string, primeCache bool) error {
 		// processAction will call notifyArrFailedAndRemove so Sonarr blacklists
 		// the release and triggers a re-search immediately.
 		n, err := f.Read(buf)
-		if err != nil && err.Error() != "EOF" {
+		if err != nil && !errors.Is(err, io.EOF) {
 			return fmt.Errorf("symlink target not readable (start): %w", err)
 		}
 		if n == 0 {
@@ -496,7 +496,7 @@ func verifySymlinkFileReady(path string, primeCache bool) error {
 				return fmt.Errorf("symlink target not seekable: %w", err)
 			}
 			n, err = f.Read(buf)
-			if err != nil && err.Error() != "EOF" {
+			if err != nil && !errors.Is(err, io.EOF) {
 				return customerror.NewPermanentError(
 					fmt.Errorf("NNTP file has incomplete retention (end segments unreadable): %w", err),
 				)
