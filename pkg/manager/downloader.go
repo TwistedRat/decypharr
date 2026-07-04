@@ -252,7 +252,7 @@ func (d *Downloader) processSymlink(entry *storage.Entry, mountPath string) erro
 	entry.IsDownloading = true
 	_ = d.manager.queue.Update(entry)
 
-	if err := d.waitForSymlinkFilesReady(filePaths, symlinkReadyTimeout); err != nil {
+	if err := d.waitForSymlinkFilesReady(filePaths, symlinkReadyTimeout, !entry.IsNZB()); err != nil {
 		return err
 	}
 
@@ -365,7 +365,7 @@ func (d *Downloader) createSymlinksWhenMountFilesAppear(entry *storage.Entry, fi
 	return filePaths, nil
 }
 
-func (d *Downloader) waitForSymlinkFilesReady(filePaths []string, timeout time.Duration) error {
+func (d *Downloader) waitForSymlinkFilesReady(filePaths []string, timeout time.Duration, primeCache bool) error {
 	if len(filePaths) == 0 {
 		return nil
 	}
@@ -382,7 +382,7 @@ func (d *Downloader) waitForSymlinkFilesReady(filePaths []string, timeout time.D
 	for len(pending) > 0 {
 		attempt++
 		for path := range pending {
-			if err := verifySymlinkFileReady(path); err != nil {
+			if err := verifySymlinkFileReady(path, primeCache); err != nil {
 				pending[path] = err
 				continue
 			}
@@ -412,7 +412,7 @@ func (d *Downloader) waitForSymlinkFilesReady(filePaths []string, timeout time.D
 	return nil
 }
 
-func verifySymlinkFileReady(path string) error {
+func verifySymlinkFileReady(path string, primeCache bool) error {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return fmt.Errorf("symlink not available: %w", err)
@@ -429,6 +429,10 @@ func verifySymlinkFileReady(path string) error {
 		return fmt.Errorf("symlink target is a directory")
 	}
 
+	if !primeCache {
+		return nil
+	}
+
 	f, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("symlink target cannot be opened: %w", err)
@@ -437,7 +441,8 @@ func verifySymlinkFileReady(path string) error {
 	// Read a small header to prime the rclone VFS cache. Without this,
 	// rclone is lazy and fetches nothing until Sonarr's MediaInfo reads
 	// the file — which races the CDN fetch and causes "unable to determine
-	// if file is a sample" import failures.
+	// if file is a sample" import failures. Only needed for CDN-backed
+	// (TorBox) entries — NNTP streams on demand and doesn't need priming.
 	buf := make([]byte, 64*1024)
 	_, err = f.Read(buf)
 	if err != nil && err.Error() != "EOF" {
