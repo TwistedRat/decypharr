@@ -34,8 +34,9 @@ type Rclone struct {
 	Umask string `json:"umask,omitempty"`
 
 	// Timeout settings
-	AttrTimeout  string `json:"attr_timeout,omitempty"`   // Attribute cache timeout (default 1s)
-	DirCacheTime string `json:"dir_cache_time,omitempty"` // Directory cache time (default 5m)
+	AttrTimeout   string `json:"attr_timeout,omitempty"`   // Attribute cache timeout (default 1s)
+	DirCacheTime  string `json:"dir_cache_time,omitempty"` // Directory cache time (default 5m)
+	DaemonTimeout string `json:"daemon_timeout,omitempty"` // FUSE kernel op timeout: the kernel returns an error after this, so a read of a broken file cannot hang a process (D state) for ever
 
 	// Performance settings
 	NoModTime  bool `json:"no_modtime,omitempty"`  // Don't read/write modification time
