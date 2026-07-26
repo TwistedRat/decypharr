@@ -216,6 +216,18 @@ func (d *Downloader) markAsError(entry *storage.Entry, err error) {
 // processSymlink creates symlinks for torrent files
 func (d *Downloader) processSymlink(entry *storage.Entry, mountPath string) error {
 	files := entry.GetActiveFiles()
+
+	if d.manager.config.GetBdMainFileOnly() {
+		if filtered, ok := storage.SelectMainM2tsFile(files); ok {
+			main := filtered[len(filtered)-1]
+			d.logger.Info().Str("entry", entry.Name).
+				Str("main_file", main.Name).
+				Int64("size_bytes", main.Size).
+				Msgf("Blu-ray rip: selected main .m2ts from %d candidates", len(files)-len(filtered)+1)
+			files = filtered
+		}
+	}
+
 	torrentSymlinkPath := entry.DownloadPath()
 	d.logger.Info().Str("mount_path", mountPath).Msgf("Creating symlinks for %d files in %s", len(files), torrentSymlinkPath)
 
@@ -507,6 +519,18 @@ func (d *Downloader) processDownload(entry *storage.Entry) error {
 // processTorrentDownload downloads files from debrid via HTTP
 func (d *Downloader) processTorrentDownload(entry *storage.Entry) error {
 	files := entry.GetActiveFiles()
+
+	if d.manager.config.GetBdMainFileOnly() {
+		if filtered, ok := storage.SelectMainM2tsFile(files); ok {
+			main := filtered[len(filtered)-1]
+			d.logger.Info().Str("entry", entry.Name).
+				Str("main_file", main.Name).
+				Int64("size_bytes", main.Size).
+				Msgf("Blu-ray rip: selected main .m2ts from %d candidates", len(files)-len(filtered)+1)
+			files = filtered
+		}
+	}
+
 	d.logger.Info().Msgf("Downloading %d files...", len(files))
 
 	totalSize := int64(0)
