@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/sirrobot01/decypharr/internal/config"
+	"github.com/sirrobot01/decypharr/internal/nntp"
 	"github.com/sirrobot01/decypharr/pkg/debrid/types"
 	"github.com/sirrobot01/decypharr/pkg/manager/link"
 	"github.com/sirrobot01/decypharr/pkg/storage"
@@ -454,8 +455,9 @@ func (t *httpTransport) recover(ctx context.Context, err error, attempt int) err
 // the usenet client; recovery here only reopens the handle at the current
 // offset.
 type usenetTransport struct {
-	size     int64
-	openFile func(ctx context.Context) (usenetFileHandle, error)
+	size      int64
+	openFile  func(ctx context.Context) (usenetFileHandle, error)
+	markDirty func() // called once when a permanent 430 is detected at stream time
 }
 
 // usenetFileHandle abstracts *usenet.FileHandle for tests.
@@ -501,6 +503,15 @@ func (t *usenetTransport) open(ctx context.Context, pos int64) (io.ReadCloser, e
 
 func (t *usenetTransport) recover(ctx context.Context, err error, attempt int) error {
 	if lerr := link.GetLinkError(err); lerr != nil && lerr.IsPermanent() {
+		return err
+	}
+	// NNTP 430: article body expired — segments won't reappear, treat as
+	// permanent so the session stops retrying and the repair sweep can
+	// reclassify the entry and trigger an arr re-search.
+	if nntp.IsArticleNotFoundError(err) {
+		if t.markDirty != nil {
+			t.markDirty()
+		}
 		return err
 	}
 	return sleepCtx(ctx, sessionBackoff(attempt))
@@ -563,10 +574,14 @@ func (m *Manager) openSession(ctx context.Context, entry *storage.Entry, filenam
 		}
 		source, debrid = "nzb", ""
 		nzoID := entry.InfoHash
+		entryName := entry.Name
 		t = &usenetTransport{
 			size: file.Size,
 			openFile: func(ctx context.Context) (usenetFileHandle, error) {
 				return m.usenet.OpenFile(ctx, nzoID, filename)
+			},
+			markDirty: func() {
+				m.storage.MarkEntryDirty(entryName, config.ProtocolNZB, "article_not_found")
 			},
 		}
 	} else {
