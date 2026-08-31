@@ -145,6 +145,23 @@ func (p *NZBParser) Parse(ctx context.Context, filename string, content []byte) 
 	fileGroups := p.groupFiles(ctx, raw.Files)
 
 	if len(fileGroups) == 0 {
+		// Probe the first available segment to distinguish article expiry / NNTP
+		// errors from a genuinely unrecognisable NZB. Without this probe the
+		// real NNTP error (e.g. 430 ARTICLE_NOT_FOUND) is silently discarded
+		// inside batchDetectContentTypes and the caller only sees the generic
+		// "no valid file groups" message, which gives no indication of cause.
+		for _, f := range raw.Files {
+			if len(f.Segments) == 0 {
+				continue
+			}
+			if statErr := p.manager.ExecuteWithFailover(ctx, func(conn *nntp.Connection) error {
+				_, _, e := conn.Stat(f.Segments[0].Id)
+				return e
+			}); statErr != nil {
+				return nil, nil, fmt.Errorf("no valid file groups found in NZB: %w", statErr)
+			}
+			break // connectivity confirmed — NZB has genuinely unrecognisable content
+		}
 		return nil, nil, fmt.Errorf("no valid file groups found in NZB")
 	}
 
@@ -375,7 +392,7 @@ func (p *NZBParser) batchDetectContentTypes(ctx context.Context, unknownFiles []
 		// You can still pass ctx through to your inner function.
 		detectedType, actualFilename, err := p.detectFileTypeByContent(ctx, *f)
 		if err != nil {
-			p.logger.Trace().
+			p.logger.Debug().
 				Err(err).
 				Str("file", f.Filename).
 				Msg("Failed to detect file type by content")
