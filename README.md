@@ -2,7 +2,7 @@
 
 ![ui](docs/src/assets/images/index.png)
 
-> **This is a personal fork of [sirrobot01/decypharr](https://github.com/sirrobot01/decypharr)** with fixes and features not yet merged upstream. The `main` branch is the active deploy target. See [Fork Changes](#fork-changes) below.
+> **This is a personal fork of [sirrobot01/decypharr](https://github.com/sirrobot01/decypharr)** based on upstream v2.5, with fixes and features not yet merged upstream. The `main` branch is the active deploy target. See [Fork Changes](#fork-changes) below.
 
 **Decypharr** is a **Media Gateway** for Debrid services and Usenet written in Go.
 
