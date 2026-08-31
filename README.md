@@ -1,6 +1,8 @@
-# Decypharr
+# Decypharr (TwistedRat fork)
 
 ![ui](docs/src/assets/images/index.png)
+
+> **This is a personal fork of [sirrobot01/decypharr](https://github.com/sirrobot01/decypharr)** with fixes and features not yet merged upstream. The `main` branch is the active deploy target. See [Fork Changes](#fork-changes) below.
 
 **Decypharr** is a **Media Gateway** for Debrid services and Usenet written in Go.
 
@@ -58,6 +60,20 @@ services:
 ## Documentation
 
 For complete documentation, please visit our [Documentation](https://docs.decypharr.com).
+
+## Fork Changes
+
+Active fixes on this fork's `main` branch (based on upstream v2.5):
+
+| Commit | Fix |
+|--------|-----|
+| `2d84e49` | **NNTP 430 → repair sweep**: article-not-found errors during streaming now mark the entry dirty so the repair sweep triggers an arr re-search instead of retrying indefinitely |
+| `6570c42` | **Multi-episode import**: after Sonarr imports a grabbed episode, a folder-based re-import fires 30s later so secondary episodes in multi-episode files (e.g. `S09E23E24`) are also linked — fixes season packs where two episodes share one file |
+| `7a17a66` | **Blu-ray main feature selection**: when a torrent contains multiple `.m2ts` files, only the largest (the main feature) is exposed; menus, trailers, and bonus streams are hidden to prevent Plex from flooding the debrid CDN with probe requests |
+
+Config options added by this fork: `bd_main_file_only`, `download_uid`, `download_gid` — see [Configuration Reference](docs/src/content/docs/guides/configuration.md#fork-specific-features-twistedratdecypharr).
+
+Old fork history is preserved in the `backup/main-2026-08-30` branch.
 
 ## Contributing
 

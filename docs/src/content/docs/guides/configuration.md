@@ -494,3 +494,43 @@ REPAIR__INTERVAL=30m
 ```
 
 See [defaults.go](https://github.com/sirrobot01/decypharr/blob/main/internal/config/defaults.go) for all defaults.
+
+## Fork-specific Features (TwistedRat/decypharr)
+
+These options are available in the [TwistedRat fork](https://github.com/TwistedRat/decypharr) and not yet in upstream.
+
+### Blu-ray Main Feature Selection (`bd_main_file_only`)
+
+Blu-ray rips typically contain 20–40 `.m2ts` files: menus, trailers, bonus features, and the main feature. When a media player like Plex scans the folder it probes every file, each probe triggering a debrid CDN link request. On large rips this floods the CDN and causes 429 rate-limit errors.
+
+When enabled, decypharr detects folders with 2+ `.m2ts` files and exposes only the largest one (the main feature — menus and extras are always smaller). Non-`.m2ts` files are unaffected.
+
+```json
+{
+  "bd_main_file_only": true
+}
+```
+
+| Field              | Type | Description                                                         | Default |
+|--------------------|------|---------------------------------------------------------------------|---------|
+| `bd_main_file_only` | bool | Only expose the largest `.m2ts` in Blu-ray rips to prevent CDN flooding | `true`  |
+
+Set to `false` to disable and expose all `.m2ts` files (e.g. if you need access to bonus features).
+
+### Download Ownership (`download_uid` / `download_gid`)
+
+By default, decypharr runs as root and creates symlinks owned by uid=0. If your Arr application runs as a different user (e.g. Sonarr as uid=1000 `abc`) it needs write permission on the download directories to delete symlinks during import.
+
+```json
+{
+  "download_uid": 1000,
+  "download_gid": 1000
+}
+```
+
+| Field          | Type | Description                                          | Default      |
+|----------------|------|------------------------------------------------------|--------------|
+| `download_uid` | int  | UID to assign to created download dirs and symlinks  | Current user |
+| `download_gid` | int  | GID to assign to created download dirs and symlinks  | Current group |
+
+Uses `Lchown` so symlinks themselves are chowned, not their targets. Match this to the UID/GID your Arr runs as.
