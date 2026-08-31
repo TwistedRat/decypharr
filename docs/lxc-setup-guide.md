@@ -419,7 +419,7 @@ services:
   # the rclone VFS even though it is mounted inside the Decypharr container.
   # ---------------------------------------------------------------------------
   decypharr:
-    build: https://github.com/TwistedRat/decypharr.git
+    build: https://github.com/TwistedRat/decypharr.git#main
     image: decypharr
     container_name: decypharr
     security_opt:
