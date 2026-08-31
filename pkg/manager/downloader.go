@@ -16,6 +16,7 @@ import (
 	grab "github.com/cavaliergopher/grab/v3"
 	"github.com/rs/zerolog"
 	"github.com/sirrobot01/decypharr/internal/config"
+	"github.com/sirrobot01/decypharr/pkg/arr"
 	"github.com/sirrobot01/decypharr/pkg/debrid/types"
 	"github.com/sirrobot01/decypharr/pkg/manager/link"
 	"github.com/sirrobot01/decypharr/pkg/notifications"
@@ -132,6 +133,7 @@ func (d *Downloader) completeEntry(entry *storage.Entry) {
 	d.markAsCompleted(entry)
 	d.notifyCompleted(entry)
 	d.triggerArrRefresh(entry)
+	d.triggerFolderImport(entry)
 }
 
 func (d *Downloader) markAsCompleted(entry *storage.Entry) {
@@ -163,6 +165,34 @@ func (d *Downloader) triggerArrRefresh(entry *storage.Entry) {
 				Str("arr", a.Name).
 				Str("entry", entry.Name).
 				Msg("Failed to trigger Arr refresh")
+		}
+	}()
+}
+
+// triggerFolderImport fires a folder-based manual import for Sonarr entries
+// after a short delay. This catches episodes that a downloadId-based import
+// misses — e.g. S09E23E24 files when Sonarr only grabbed E23. Sonarr's own
+// filename parser returns all covered episode IDs when given the folder path.
+// Safe to run for every Sonarr entry: single-episode files are a no-op.
+func (d *Downloader) triggerFolderImport(entry *storage.Entry) {
+	go func() {
+		a := d.manager.arr.GetOrCreate(entry.Category)
+		if a == nil || a.Host == "" || a.Token == "" || a.Type != arr.Sonarr {
+			return
+		}
+		time.Sleep(30 * time.Second)
+		folderPath := entry.DownloadPath()
+		if err := a.ImportByFolder(folderPath); err != nil {
+			d.logger.Debug().
+				Err(err).
+				Str("arr", a.Name).
+				Str("entry", entry.Name).
+				Msg("Folder import failed")
+		} else {
+			d.logger.Debug().
+				Str("entry", entry.Name).
+				Str("folder", folderPath).
+				Msg("Folder import completed")
 		}
 	}()
 }

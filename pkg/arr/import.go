@@ -198,3 +198,52 @@ func (a *Arr) Import(downloadID string) error {
 	}
 	return nil
 }
+
+// ImportByFolder triggers a folder-based manual import so Sonarr re-parses
+// every filename in folderPath. This picks up all episodes from multi-episode
+// files (e.g. S09E23E24) that a downloadId-based import would miss, because
+// Sonarr only associates the downloadId with the episode it originally grabbed.
+func (a *Arr) ImportByFolder(folderPath string) error {
+	query := gourl.Values{}
+	query.Add("folder", folderPath)
+	query.Add("filterExistingFiles", "false")
+	url := "api/v3/manualimport" + "?" + query.Encode()
+	var data []ImportResponseSchema
+	if _, err := a.Request(http.MethodGet, url, nil, &data); err != nil {
+		return fmt.Errorf("folder import GET failed: %w", err)
+	}
+	if len(data) == 0 {
+		return nil
+	}
+	var files []ManualImportRequestFile
+	for _, d := range data {
+		var episodeIds []int
+		for _, e := range d.Episodes {
+			episodeIds = append(episodeIds, e.Id)
+		}
+		files = append(files, ManualImportRequestFile{
+			Path:              d.Path,
+			FolderName:        d.FolderName,
+			SeriesId:          d.Series.Id,
+			SeasonNumber:      d.SeasonNumber,
+			EpisodeIds:        episodeIds,
+			Quality:           d.Quality,
+			Languages:         d.Languages,
+			ReleaseGroup:      d.ReleaseGroup,
+			CustomFormats:     d.CustomFormats,
+			CustomFormatScore: d.CustomFormatScore,
+			IndexerFlags:      d.IndexerFlags,
+			ReleaseType:       d.ReleaseType,
+			Rejections:        d.Rejections,
+		})
+	}
+	request := ManualImportRequestSchema{
+		Name:       "ManualImport",
+		Files:      files,
+		ImportMode: "copy",
+	}
+	if _, err := a.Request(http.MethodPost, "api/v3/command", request, nil); err != nil {
+		return fmt.Errorf("folder import POST failed: %w", err)
+	}
+	return nil
+}
