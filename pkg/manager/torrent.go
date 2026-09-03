@@ -310,11 +310,13 @@ func (m *Manager) processSyncTorrent(t *types.Torrent) (*storage.Entry, error) {
 		return nil, nil
 	}
 
-	// Check if files are complete - only make API call if needed
-	needsUpdate := len(t.Files) == 0 || !isComplete(t.Files)
+	// Only call UpdateTorrent when the bulk list returned no files at all.
+	// The !isComplete check was triggering a per-torrent API call for every
+	// non-finished torrent, even though UpdateTorrent sets links via the same
+	// DownloadFinished flag the bulk call already evaluated — pure waste.
+	// Download links are populated separately by RefreshDownloadLinks.
+	needsUpdate := len(t.Files) == 0
 	if needsUpdate {
-		// This is the main bottleneck - API call per torrent
-		// Consider: Could we batch UpdateTorrent calls? Depends on debrid API
 		if err := client.UpdateTorrent(t); err != nil {
 			return nil, err
 		}
