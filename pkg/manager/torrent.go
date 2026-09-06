@@ -304,27 +304,13 @@ func (m *Manager) runBatchWriter(batchChan <-chan *storage.Entry, errChan chan<-
 
 // processSyncTorrent processes a single torrent and returns it for batched writing
 func (m *Manager) processSyncTorrent(t *types.Torrent) (*storage.Entry, error) {
-	// GetReader the debrid client
-	client := m.ProviderClient(t.Debrid)
-	if client == nil {
+	// Skip torrents with no usable files from the bulk call.
+	// UpdateTorrent uses identical parsing logic and will produce the same result
+	// (e.g. files filtered by IsFileAllowed, or non-finished torrents with no links).
+	// Making an individual API call per torrent causes 429 storms on large accounts.
+	// Finished torrents with real files always have len(t.Files) > 0 from the bulk call.
+	if len(t.Files) == 0 {
 		return nil, nil
-	}
-
-	// Only call UpdateTorrent when the bulk list returned no files at all.
-	// The !isComplete check was triggering a per-torrent API call for every
-	// non-finished torrent, even though UpdateTorrent sets links via the same
-	// DownloadFinished flag the bulk call already evaluated — pure waste.
-	// Download links are populated separately by RefreshDownloadLinks.
-	needsUpdate := len(t.Files) == 0
-	if needsUpdate {
-		if err := client.UpdateTorrent(t); err != nil {
-			return nil, err
-		}
-
-		// Re-check completion after update
-		if !isComplete(t.Files) {
-			return nil, nil
-		}
 	}
 
 	addedOn := t.Added
