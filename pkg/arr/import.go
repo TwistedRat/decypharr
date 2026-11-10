@@ -1,6 +1,7 @@
 package arr
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	gourl "net/url"
@@ -82,19 +83,9 @@ type ImportResponseSchema struct {
 		FinaleType               string    `json:"finaleType,omitempty"`
 	} `json:"episodes"`
 	ReleaseGroup string `json:"releaseGroup"`
-	Quality      struct {
-		Quality struct {
-			Id         int    `json:"id"`
-			Name       string `json:"name"`
-			Source     string `json:"source"`
-			Resolution int    `json:"resolution"`
-		} `json:"quality"`
-		Revision struct {
-			Version  int  `json:"version"`
-			Real     int  `json:"real"`
-			IsRepack bool `json:"isRepack"`
-		} `json:"revision"`
-	} `json:"quality"`
+	// Quality is passed back to the arr verbatim: Radarr v6 expects enum values
+	// (e.g. quality.source) in the exact form it sent them.
+	Quality json.RawMessage `json:"quality"`
 	Languages []struct {
 		Id   int    `json:"id"`
 		Name string `json:"name"`
@@ -118,19 +109,9 @@ type ManualImportRequestFile struct {
 	SeriesId     int    `json:"seriesId"`
 	SeasonNumber int    `json:"seasonNumber"`
 	EpisodeIds   []int  `json:"episodeIds"`
-	Quality      struct {
-		Quality struct {
-			Id         int    `json:"id"`
-			Name       string `json:"name"`
-			Source     string `json:"source"`
-			Resolution int    `json:"resolution"`
-		} `json:"quality"`
-		Revision struct {
-			Version  int  `json:"version"`
-			Real     int  `json:"real"`
-			IsRepack bool `json:"isRepack"`
-		} `json:"revision"`
-	} `json:"quality"`
+	// Quality is passed back to the arr verbatim: Radarr v6 expects enum values
+	// (e.g. quality.source) in the exact form it sent them.
+	Quality json.RawMessage `json:"quality"`
 	Languages []struct {
 		Id   int    `json:"id"`
 		Name string `json:"name"`

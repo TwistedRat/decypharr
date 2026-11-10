@@ -6,7 +6,9 @@ import (
 	gourl "net/url"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/sirrobot01/decypharr/internal/config"
 	"github.com/sirrobot01/decypharr/internal/logger"
 )
@@ -339,12 +341,42 @@ func (a *Arr) removeQueueItems(items map[int]bool, blocklist, skipRedownload boo
 	return nil
 }
 
+// importBackoff holds, per downloadId, when a failed forced import may be
+// retried. Without it queue cleanup retries a broken import every run.
+var importBackoff = xsync.NewMap[string, importRetry]()
+
+type importRetry struct {
+	failures int
+	next     time.Time
+}
+
+const (
+	importBackoffBase = 10 * time.Minute
+	importBackoffMax  = 6 * time.Hour
+)
+
 func (a *Arr) ManualImportItems(items map[string]bool) error {
+	l := logger.New("arr")
+	now := time.Now()
 	for downloadId := range items {
-		if err := a.Import(downloadId); err != nil {
-			// log error
-			fmt.Println(err)
+		key := a.Name + "|" + downloadId
+		r, _ := importBackoff.Load(key)
+		if now.Before(r.next) {
+			continue
 		}
+		if err := a.Import(downloadId); err != nil {
+			r.failures++
+			wait := importBackoffBase << min(r.failures-1, 6)
+			if wait > importBackoffMax {
+				wait = importBackoffMax
+			}
+			r.next = now.Add(wait)
+			importBackoff.Store(key, r)
+			l.Error().Err(err).Str("arr", a.Name).Str("downloadId", downloadId).
+				Int("failures", r.failures).Dur("retryIn", wait).Msg("forced import failed")
+			continue
+		}
+		importBackoff.Delete(key)
 	}
 	return nil
 }
