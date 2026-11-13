@@ -58,6 +58,18 @@ func (h *Handler) StreamResponse(entry *storage.Entry, info *manager.FileInfo, w
 	}
 
 	length := end - start + 1
+
+	// Read the first bytes before any header goes out. Prime only connects, so
+	// without this a segment that is gone or corrupt at this offset surfaced as
+	// a 206 with an empty body; rclone takes a short body as transient and asks
+	// again for ever. Failing here gives a real status (404 for lost data).
+	head := make([]byte, min(length, 64<<10))
+	n, err := io.ReadAtLeast(stream, head, 1)
+	if n == 0 && err != nil {
+		return customerror.NewError(err, streamErrorStatus(err), "server.internal_error", false, false)
+	}
+	head = head[:n]
+
 	w.Header().Set("Content-Type", utils.GetContentType(info.Name()))
 	w.Header().Set("Content-Length", strconv.FormatInt(length, 10))
 	w.Header().Set("Accept-Ranges", "bytes")
@@ -70,8 +82,11 @@ func (h *Handler) StreamResponse(entry *storage.Entry, info *manager.FileInfo, w
 
 	// The wrapper struct hides w's ReaderFrom so io.CopyBuffer uses the
 	// pooled buffer instead of net/http's 32KB one.
+	if _, err := w.Write(head); err != nil {
+		return customerror.NewError(err, http.StatusInternalServerError, "server.internal_error", false, true)
+	}
 	bufPtr := streamCopyBufPool.Get().(*[]byte)
-	_, err = io.CopyBuffer(struct{ io.Writer }{w}, io.LimitReader(stream, length), *bufPtr)
+	_, err = io.CopyBuffer(struct{ io.Writer }{w}, io.LimitReader(stream, length-int64(len(head))), *bufPtr)
 	streamCopyBufPool.Put(bufPtr)
 	if err != nil {
 		return customerror.NewError(err, http.StatusInternalServerError, "server.internal_error", false, true)
