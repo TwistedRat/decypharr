@@ -56,6 +56,14 @@ func (e *Error) IsSilent() bool {
 	return IsSilentError(e.err)
 }
 
+// StatusCode is the HTTP status the error should be answered with (500 if unset).
+func (e *Error) StatusCode() int {
+	if e.statusCode == 0 {
+		return http.StatusInternalServerError
+	}
+	return e.statusCode
+}
+
 func NewError(err error, statusCode int, code string, silent bool, headersWritten bool) *Error {
 	return &Error{
 		err:            err,

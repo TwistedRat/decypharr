@@ -521,6 +521,17 @@ func (c *Client) ExecuteWithFailover(ctx context.Context, fn func(conn *Connecti
 // loops should not multiply attempts on it.
 var ErrAllProvidersFailed = errors.New("all providers failed")
 
+// IsPermanentDataError reports whether err means the data itself is gone or broken
+// on Usenet (an article missing on every provider, or a yEnc body that does not
+// decode). Asking again gives the same answer, so callers must not retry.
+func IsPermanentDataError(err error) bool {
+	var e *Error
+	if !errors.As(err, &e) {
+		return false
+	}
+	return e.Type == ErrorTypeArticleNotFound || e.Type == ErrorTypeYencDecode
+}
+
 // IsAllProvidersFailed reports whether err carries ErrAllProvidersFailed.
 func IsAllProvidersFailed(err error) bool {
 	return errors.Is(err, ErrAllProvidersFailed)

@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/sirrobot01/decypharr/internal/customerror"
+	"github.com/sirrobot01/decypharr/internal/nntp"
 	"github.com/sirrobot01/decypharr/internal/utils"
 	"github.com/sirrobot01/decypharr/pkg/manager"
 	"github.com/sirrobot01/decypharr/pkg/storage"
@@ -46,14 +47,14 @@ func (h *Handler) StreamResponse(entry *storage.Entry, info *manager.FileInfo, w
 
 	stream, err := h.manager.OpenStream(r.Context(), entry, info.Name(), start, client)
 	if err != nil {
-		return customerror.NewError(err, http.StatusInternalServerError, "server.internal_error", false, false)
+		return customerror.NewError(err, streamErrorStatus(err), "server.internal_error", false, false)
 	}
 	defer stream.Close()
 
 	// Fast-fail before headers: an unreachable link becomes a proper error
 	// status instead of a dead 200.
 	if err := stream.Prime(); err != nil {
-		return customerror.NewError(err, http.StatusInternalServerError, "server.internal_error", false, false)
+		return customerror.NewError(err, streamErrorStatus(err), "server.internal_error", false, false)
 	}
 
 	length := end - start + 1
@@ -76,6 +77,17 @@ func (h *Handler) StreamResponse(entry *storage.Entry, info *manager.FileInfo, w
 		return customerror.NewError(err, http.StatusInternalServerError, "server.internal_error", false, true)
 	}
 	return nil
+}
+
+// streamErrorStatus is the HTTP status for a stream that cannot start. Data that is
+// gone from Usenet (missing articles, undecodable yEnc) is 404: rclone retries 5xx
+// for ever, so a 500 kept a reader such as ffprobe stuck on a broken file for days
+// with decypharr and rclone busy on the retries. A 404 ends the read at once.
+func streamErrorStatus(err error) int {
+	if nntp.IsPermanentDataError(err) {
+		return http.StatusNotFound
+	}
+	return http.StatusInternalServerError
 }
 
 func (h *Handler) getRange(info *manager.FileInfo, r *http.Request) (int64, int64) {
