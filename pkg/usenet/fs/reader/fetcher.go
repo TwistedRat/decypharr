@@ -421,7 +421,7 @@ func (sf *SegmentFetcher) CancelPendingPrefetch() {
 
 // fetchWithRetry fetches a single segment, retrying transient failures so a
 // momentary provider hiccup or stall does not tear down the whole stream.
-// Permanent failures (article-not-found) and cancellations return immediately.
+// Permanent failures (article not found, undecodable yEnc) and cancellations return immediately.
 func (sf *SegmentFetcher) fetchWithRetry(ctx context.Context, segIdx int) error {
 	maxAttempts := sf.config.MaxRetries
 	if maxAttempts < 1 {
@@ -450,8 +450,9 @@ func (sf *SegmentFetcher) fetchWithRetry(ctx context.Context, segIdx int) error 
 		}
 		lastErr = err
 
-		// Don't retry permanent errors or cancellations.
-		if nntp.IsArticleNotFoundError(err) || ctx.Err() != nil || sf.ctx.Err() != nil {
+		// Don't retry permanent errors (article gone, or a body that does not
+		// decode: the same bytes come back every time) or cancellations.
+		if nntp.IsArticleNotFoundError(err) || nntp.IsPermanentDataError(err) || ctx.Err() != nil || sf.ctx.Err() != nil {
 			return err
 		}
 		// The failover layer already retried per provider and across
